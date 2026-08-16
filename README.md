@@ -50,6 +50,40 @@ timeout budget, keep your own origin-fetch timeout comfortably under it —
 that margin is what turns "Google is slow" into "served a two-day-old
 cached copy" instead of "sign-in failed."
 
+## Quickstart (5 minutes, no prior Workers experience needed)
+
+A Cloudflare Worker is just a small script Cloudflare runs on its edge
+network instead of on your own server. This whole thing is free — no credit
+card required for the Workers/KV usage this project needs.
+
+```bash
+git clone https://github.com/hirad121/cloudflare-gauth-proxy
+cd cloudflare-gauth-proxy
+npm install
+npx wrangler login          # opens your browser, log in / sign up free
+npx wrangler kv namespace create OAUTH_DISCOVERY_CACHE
+```
+
+That last command prints an `id`. Copy `wrangler.jsonc.example` to
+`wrangler.jsonc`, paste that `id` into `kv_namespaces[0].id`, then run:
+
+```bash
+npx wrangler deploy
+```
+
+It prints your live URL, something like
+`https://cloudflare-gauth-proxy.<you>.workers.dev`. Open
+`<that-url>/.well-known/openid-configuration` in a browser — if you see
+JSON with a `jwks_uri` field pointing back at your own URL, it's working.
+
+One more step: paste that same URL into `wrangler.jsonc`'s `vars.SELF_ORIGIN`
+and run `npx wrangler deploy` once more — this is what makes the `jwks_uri`
+rewrite point at the right place. (The full [Setup](#setup) section below
+explains why this is two steps.)
+
+That's the whole thing deployed. The rest of this README covers *using* it
+(pointing your app at it) and the *why* behind its design.
+
 ## Architecture
 
 ```
@@ -195,6 +229,31 @@ proxying, `tokeninfo`'s uncached passthrough, and unknown-path 404s.
 `wrangler.test.jsonc` (a separate, committed config — see [Gotchas](#gotchas))
 holds the fake KV id and origin the test suite runs against.
 
+## Verified, not just claimed
+
+Before publishing, this was actually run — not just written and assumed to
+work:
+
+- **Real deploy, real Cloudflare account, real Google endpoints.** A
+  throwaway Worker + KV namespace were deployed live, hit with real HTTP
+  requests, and confirmed: correct `jwks_uri` rewrite, correct cache
+  headers, real Google signing keys returned, 404s on unknown paths. Both
+  torn down afterward — nothing about them is in this repo.
+- **The KV fallback path was proven against a real failure, not a
+  simulated one** — during development, Google itself temporarily blocked
+  the test environment's IP (an ordinary real-world failure this proxy
+  exists to survive), and the fallback served the last-known-good copy
+  correctly, with `X-Served-From: stale-kv-fallback`, exactly as designed.
+- **What wasn't re-proven on the live deploy**: forcing the fallback path
+  a second time against the *specific* deployed verify instance, because
+  Cloudflare's edge Cache API correctly intercepted the attempt (it was
+  still serving a valid cached response, so the deliberately-broken
+  upstream was never reached) — a demonstration of the cache working
+  correctly, not a gap in the fallback logic itself, which is separately
+  covered by the automated test suite below.
+- **The full automated test suite** (`npm test`) exercises every branch in
+  the real Workers runtime and is what CI runs on every push.
+
 ## Gotchas
 
 - **`wrangler.test.jsonc` (test-only config) is committed; `wrangler.jsonc`
@@ -214,17 +273,47 @@ holds the fake KV id and origin the test suite runs against.
   namespace, unless you pass `--remote`. Don't be surprised if a value you
   put in production KV isn't visible locally.
 
-## Missing / next steps
+## Roadmap / where to contribute
 
-Being upfront about what this repo doesn't have yet:
+Being upfront about what this repo doesn't have yet, ranked by how
+self-contained the work is:
 
-- No rate limiting on the proxy itself (relies on Cloudflare's platform-level
-  protections).
-- No real-deploy smoke test in CI (only the local Miniflare test suite +
-  typecheck run automatically; an actual `wrangler deploy` + live-endpoint
-  check is still manual).
+**Good first issues** (no design decisions needed, clear done-condition):
+- **A `/healthz` endpoint** reporting whether the last origin fetch to
+  Google succeeded and how old the KV fallback copy is — useful for anyone
+  running this in front of real traffic who wants an uptime check that
+  isn't just "does the Worker respond."
+- **Structured logging** — `console.error` calls currently log a string and
+  an `Error` object; switching to a consistent JSON shape would make this
+  pluggable into Cloudflare Logpush / any log pipeline without a
+  regex-scrape step.
+- **A CONTRIBUTING checklist item enforcing `npm run typecheck && npm test`
+  as a git pre-commit hook** (husky or similar) — right now this is only
+  enforced in CI, so a local commit can still land red.
 
-Issues and PRs welcome for either.
+**Real design work, needs a proposal/issue first**:
+- **Rate limiting.** Currently relies entirely on Cloudflare's
+  platform-level DDoS protection — there's no request-count-per-IP guard in
+  the Worker itself. Whether that's actually needed for a public-metadata
+  proxy like this (vs. adding complexity for no real benefit) is exactly
+  the kind of judgment call that should be argued out in an issue before
+  code, not decided unilaterally in a PR.
+- **A real-deploy smoke test in CI.** Right now CI only runs the local
+  Miniflare suite — an actual `wrangler deploy` to a scratch Worker,
+  live-endpoint check, then teardown, gated on `workflow_dispatch` or a
+  label, would close the gap this README's own
+  [Verified](#verified-not-just-claimed) section is honest about.
+- **Generalizing beyond Google.** The two-layer cache + fallback pattern
+  here isn't Google-specific — the same shape would work for any OIDC
+  provider's discovery document (Microsoft Entra, Auth0, Okta...). Worth
+  discussing whether that's a config option on this repo or a genuinely
+  separate one before anyone invests the work.
+
+**Want to contribute something not listed here?** Open an issue proposing
+it first, especially for anything touching `src/index.ts`'s core request
+handling — this repo is small on purpose, and staying small is part of
+what makes it trustworthy to run in front of a real login flow. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
