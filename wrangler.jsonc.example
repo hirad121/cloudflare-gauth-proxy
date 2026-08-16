@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-gauth-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-17",
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_DISCOVERY_CACHE",
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+  "vars": {
+    "SELF_ORIGIN": "https://your-worker.your-subdomain.workers.dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
