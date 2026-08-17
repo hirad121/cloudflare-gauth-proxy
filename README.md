@@ -120,19 +120,13 @@ Two caching layers, deliberately different lifetimes:
 
 ## Setup
 
-```bash
-npm install
+Config reference (see [Quickstart](#quickstart-5-minutes-no-prior-workers-experience-needed)
+for the step-by-step walkthrough) — `wrangler.jsonc` (copied from
+`wrangler.jsonc.example`) needs:
 
-# Create the KV namespace this Worker reads/writes its fallback cache to
-npx wrangler kv namespace create OAUTH_DISCOVERY_CACHE
-```
-
-Copy `wrangler.jsonc.example` to `wrangler.jsonc` and fill in:
-
-- `kv_namespaces[0].id` — the id printed by the command above
-- `vars.SELF_ORIGIN` — the URL this Worker will be deployed at (you'll know
-  this before first deploy: `https://<worker-name>.<your-subdomain>.workers.dev`,
-  or your custom route if you attach one)
+- `kv_namespaces[0].id` — printed by `npx wrangler kv namespace create OAUTH_DISCOVERY_CACHE`
+- `vars.SELF_ORIGIN` — the URL this Worker is deployed at
+  (`https://<worker-name>.<your-subdomain>.workers.dev`, or your custom route)
 
 `wrangler.jsonc` is gitignored on purpose — it's your deployment config, not
 example code. See [Security](#security) for why.
@@ -206,10 +200,8 @@ discovery document and signing keys are fetched from.
 - `Env` (top of `src/index.ts`) is the full contract with the outside world:
   one KV binding, one string var. Nothing else this Worker touches.
 - `test/index.test.ts` is the executable spec of this Worker's behavior —
-  read it before changing `src/index.ts`; it covers every branch
-  (cache-hit, cache-miss, KV-fallback, no-fallback-503, tokeninfo passthrough,
-  404) via `@cloudflare/vitest-pool-workers` (real Workers runtime, not a
-  Node.js approximation).
+  read it before changing `src/index.ts` (see [Testing](#testing) for what
+  it covers).
 - Before proposing a change, run `npm run typecheck && npm test` — CI
   (`.github/workflows/ci.yml`) runs both on every push/PR.
 - Don't add dependencies for something the Workers runtime already provides
@@ -245,12 +237,10 @@ work:
   exists to survive), and the fallback served the last-known-good copy
   correctly, with `X-Served-From: stale-kv-fallback`, exactly as designed.
 - **What wasn't re-proven on the live deploy**: forcing the fallback path
-  a second time against the *specific* deployed verify instance, because
-  Cloudflare's edge Cache API correctly intercepted the attempt (it was
-  still serving a valid cached response, so the deliberately-broken
-  upstream was never reached) — a demonstration of the cache working
-  correctly, not a gap in the fallback logic itself, which is separately
-  covered by the automated test suite below.
+  a second time on that same instance — Cloudflare's Cache API correctly
+  served the still-valid cached response instead, so the deliberately-broken
+  upstream was never reached. Not a gap; the fallback logic itself is
+  separately covered by the automated test suite below.
 - **The full automated test suite** (`npm test`) exercises every branch in
   the real Workers runtime and is what CI runs on every push.
 
