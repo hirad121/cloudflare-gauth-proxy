@@ -318,3 +318,7 @@ what makes it trustworthy to run in front of a real login flow. See
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Author
+
+[@hirad121](https://github.com/hirad121)
